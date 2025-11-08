@@ -1,0 +1,43 @@
+# ---- Node ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- Environment files ----
+.env
+.env.local
+.env.*.local
+
+# ---- Logs ----
+logs
+*.log
+*.out
+*.err
+
+# ---- System ----
+.DS_Store
+Thumbs.db
+
+# ---- Editor / IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---- Build artifacts ----
+dist/
+build/
+coverage/
+
+# ---- Temporary ----
+*.tmp
+*.bak
+*.old
+
+# ---- OS / platform ----
+ehthumbs.db
+Desktop.ini
+
+# ---- Optional: for debugging ----
+*.pid
