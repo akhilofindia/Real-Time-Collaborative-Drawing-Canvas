@@ -9,7 +9,7 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, "..", "client")));
 
-let drawHistory = []; // store all draw events
+let drawHistory = [];
 
 function broadcastAll(message) {
   for (const client of wss.clients) {
@@ -30,7 +30,6 @@ function broadcastExceptSender(sender, message) {
 wss.on("connection", (ws) => {
   console.log("🟢 Client connected");
 
-  // Send existing drawings
   if (drawHistory.length > 0) {
     ws.send(JSON.stringify({ type: "init", history: drawHistory }));
   }
@@ -41,7 +40,7 @@ wss.on("connection", (ws) => {
 
       switch (data.type) {
         case "draw":
-          drawHistory.push(data);
+          drawHistory.push(data); // includes eraser flag!
           broadcastExceptSender(ws, JSON.stringify(data));
           break;
 
@@ -56,10 +55,6 @@ wss.on("connection", (ws) => {
         case "clear":
           drawHistory = [];
           broadcastAll(JSON.stringify({ type: "clear" }));
-          break;
-
-        case "clear-history":
-          drawHistory = [];
           break;
 
         default:

@@ -49,8 +49,7 @@ eraserBtn.addEventListener("click", () => {
   eraserBtn.classList.toggle("active", eraser);
 });
 clearBtn.addEventListener("click", () => {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ws.send(JSON.stringify({ type: "clear" }));
+  ws.send(JSON.stringify({ type: "clear" })); // 🔥 only send, no local clear
 });
 
 // --- Cursor overlay ---
@@ -121,7 +120,7 @@ canvas.addEventListener("mousemove", (e) => {
       to: { x: normX, y: normY },
       color,
       width,
-      eraser,
+      eraser, // ✅ make sure eraser is sent
     })
   );
 
@@ -146,14 +145,13 @@ ws.onmessage = (event) => {
       const fromY = data.from.y * canvas.height;
       const toX = data.to.x * canvas.width;
       const toY = data.to.y * canvas.height;
-      drawLine(fromX, fromY, toX, toY, data.color, data.width, data.eraser);
+      drawLine(fromX, fromY, toX, toY, data.color, data.width, data.eraser); // ✅ eraser works now
       break;
     }
 
     case "cursor": {
       const rect = canvas.getBoundingClientRect();
       cursors[data.userId] = {
-        // convert normalized coords to screen-space coords
         x: rect.left + data.x * rect.width,
         y: rect.top + data.y * rect.height,
         color: data.color,
@@ -180,7 +178,7 @@ ws.onmessage = (event) => {
     }
 
     case "clear": {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // ✅ triggered for all users
       break;
     }
   }
@@ -205,5 +203,4 @@ function renderCursors() {
   });
 }
 
-// --- Keep overlay aligned on resize ---
 window.addEventListener("resize", () => renderCursors());
