@@ -9,8 +9,8 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, "..", "client")));
 
-let drawHistory = [];    // array of stroke objects
-let undoneHistory = [];  // stack for redo
+let drawHistory = [];
+let undoneHistory = [];
 
 function broadcastAll(message) {
   for (const client of wss.clients) {
@@ -27,7 +27,7 @@ function broadcastExceptSender(sender, message) {
 wss.on("connection", (ws) => {
   console.log("🟢 Client connected");
 
-  // send whole history to new client
+  // Send existing canvas
   ws.send(JSON.stringify({ type: "init", history: drawHistory }));
 
   ws.on("message", (msg) => {
@@ -35,17 +35,20 @@ wss.on("connection", (ws) => {
     try {
       data = JSON.parse(msg.toString());
     } catch (err) {
-      console.error("Invalid JSON message:", err);
+      console.error("❌ Invalid JSON:", err);
       return;
     }
 
     switch (data.type) {
-      case "stroke": // a full stroke sent on mouseup
-        // store stroke (assume points normalized)
+      // 🔥 Real-time segment (not stored)
+      case "draw-segment":
+        broadcastExceptSender(ws, JSON.stringify(data));
+        break;
+
+      // ✅ Full stroke for undo/redo
+      case "stroke":
         drawHistory.push(data);
-        // new stroke invalidates redo stack
         undoneHistory = [];
-        // broadcast to other clients (sender already drew locally)
         broadcastExceptSender(ws, JSON.stringify({ type: "stroke", stroke: data }));
         break;
 
@@ -61,8 +64,8 @@ wss.on("connection", (ws) => {
 
       case "undo":
         if (drawHistory.length > 0) {
-          const popped = drawHistory.pop();
-          undoneHistory.push(popped);
+          const undone = drawHistory.pop();
+          undoneHistory.push(undone);
           broadcastAll(JSON.stringify({ type: "update-canvas", history: drawHistory }));
         }
         break;
@@ -80,7 +83,7 @@ wss.on("connection", (ws) => {
         break;
 
       default:
-        console.warn("Unknown message type:", data.type);
+        console.warn("⚠️ Unknown message:", data.type);
     }
   });
 
@@ -88,4 +91,4 @@ wss.on("connection", (ws) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
