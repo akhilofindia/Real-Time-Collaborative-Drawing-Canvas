@@ -22,15 +22,12 @@ function setupCanvas() {
 }
 setupCanvas();
 
-// --- Local user info ---
-const userId = "user-" + Math.random().toString(36).slice(2, 9);
+// --- Local state ---
+const userId = "user-" + Math.random().toString(36).slice(2, 8);
 const userColor = "#" + Math.floor(Math.random() * 16777215).toString(16);
-let drawing = false;
+let drawing = false, lastNorm = null;
+let color = "#000000", strokeWidth = 3, eraser = false;
 let pointsBuffer = [];
-let lastNorm = null;
-let color = "#000000";
-let strokeWidth = 3;
-let eraser = false;
 
 // --- UI controls ---
 const colorInput = document.getElementById("color");
@@ -39,6 +36,11 @@ const eraserBtn = document.getElementById("eraser");
 const clearBtn = document.getElementById("clear");
 const undoBtn = document.getElementById("undo");
 const redoBtn = document.getElementById("redo");
+
+function setButtonsState(undo, redo) {
+  undoBtn.disabled = undo === 0;
+  redoBtn.disabled = redo === 0;
+}
 
 colorInput.addEventListener("input", (e) => {
   color = e.target.value;
@@ -54,9 +56,10 @@ clearBtn.addEventListener("click", () => ws.send(JSON.stringify({ type: "clear" 
 undoBtn.addEventListener("click", () => ws.send(JSON.stringify({ type: "undo" })));
 redoBtn.addEventListener("click", () => ws.send(JSON.stringify({ type: "redo" })));
 
-// --- Cursor overlay ---
+// --- Cursor overlay (for other users) ---
 const cursors = {};
 const overlay = document.createElement("div");
+overlay.id = "cursor-overlay";
 overlay.style.position = "fixed";
 overlay.style.top = "0";
 overlay.style.left = "0";
@@ -66,14 +69,14 @@ overlay.style.pointerEvents = "none";
 document.body.appendChild(overlay);
 
 // --- Drawing helpers ---
-function drawLine(x1, y1, x2, y2, color, width, eraserFlag) {
+function drawLine(x1, y1, x2, y2, color, width, eraser) {
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
   ctx.lineWidth = width;
   ctx.lineCap = "round";
-  ctx.globalCompositeOperation = eraserFlag ? "destination-out" : "source-over";
-  ctx.strokeStyle = eraserFlag ? "rgba(0,0,0,1)" : color;
+  ctx.globalCompositeOperation = eraser ? "destination-out" : "source-over";
+  ctx.strokeStyle = eraser ? "rgba(0,0,0,1)" : color;
   ctx.stroke();
   ctx.closePath();
 }
@@ -82,26 +85,17 @@ function drawStroke(stroke) {
   const pts = stroke.points;
   if (!pts || pts.length < 2) return;
   for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1];
-    const b = pts[i];
-    drawLine(
-      a.x * canvas.width,
-      a.y * canvas.height,
-      b.x * canvas.width,
-      b.y * canvas.height,
-      stroke.color,
-      stroke.width,
-      stroke.eraser
-    );
+    const a = pts[i - 1], b = pts[i];
+    drawLine(a.x * canvas.width, a.y * canvas.height, b.x * canvas.width, b.y * canvas.height, stroke.color, stroke.width, stroke.eraser);
   }
 }
 
 function redrawFromHistory(history = []) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (const stroke of history) drawStroke(stroke);
+  for (const s of history) drawStroke(s);
 }
 
-// --- Mouse Events (stream + full stroke) ---
+// --- Mouse logic ---
 canvas.addEventListener("mousedown", (e) => {
   drawing = true;
   pointsBuffer = [];
@@ -117,37 +111,34 @@ canvas.addEventListener("mousemove", (e) => {
   const nx = (e.clientX - rect.left) / rect.width;
   const ny = (e.clientY - rect.top) / rect.height;
 
-  ws.send(JSON.stringify({ type: "cursor", userId, x: nx, y: ny, color: userColor }));
+  // --- Send cursor live ---
+  ws.send(JSON.stringify({
+    type: "cursor",
+    userId,
+    x: nx,
+    y: ny,
+    color: userColor
+  }));
 
   if (!drawing) return;
 
-  // Draw locally
   drawLine(lastNorm.x * canvas.width, lastNorm.y * canvas.height, nx * canvas.width, ny * canvas.height, color, strokeWidth, eraser);
+  ws.send(JSON.stringify({ type: "draw-segment", from: lastNorm, to: { x: nx, y: ny }, color, width: strokeWidth, eraser }));
 
-  // 🔥 Real-time streaming
-  ws.send(JSON.stringify({
-    type: "draw-segment",
-    from: lastNorm,
-    to: { x: nx, y: ny },
-    color,
-    width: strokeWidth,
-    eraser,
-  }));
-
-  // Save to buffer
   pointsBuffer.push({ x: nx, y: ny });
   lastNorm = { x: nx, y: ny };
 });
 
-function endStrokeAndSend() {
+canvas.addEventListener("mouseup", endStroke);
+canvas.addEventListener("mouseleave", endStroke);
+
+function endStroke() {
   if (!drawing) return;
   drawing = false;
-
   if (pointsBuffer.length < 2) return;
 
   const stroke = {
     type: "stroke",
-    id: "s-" + Math.random().toString(36).slice(2, 9),
     userId,
     color,
     width: strokeWidth,
@@ -161,57 +152,55 @@ function endStrokeAndSend() {
   lastNorm = null;
 }
 
-canvas.addEventListener("mouseup", endStrokeAndSend);
-canvas.addEventListener("mouseleave", endStrokeAndSend);
-
 // --- WebSocket message handling ---
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-
-  switch (data.type) {
-    case "draw-segment": {
-      // real-time drawing from others
-      const from = data.from, to = data.to;
-      drawLine(from.x * canvas.width, from.y * canvas.height, to.x * canvas.width, to.y * canvas.height, data.color, data.width, data.eraser);
+ws.onmessage = (e) => {
+  const d = JSON.parse(e.data);
+  switch (d.type) {
+    case "draw-segment":
+      drawLine(d.from.x * canvas.width, d.from.y * canvas.height, d.to.x * canvas.width, d.to.y * canvas.height, d.color, d.width, d.eraser);
       break;
-    }
 
-    case "stroke": {
-      // final stroke broadcast from others
-      drawStroke(data.stroke);
+    case "stroke":
+      drawStroke(d.stroke);
       break;
-    }
 
+    case "init":
+    case "update-canvas":
+      redrawFromHistory(d.history);
+      break;
+
+    case "clear":
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      break;
+
+    // --- Handle queue status ---
+    case "queue-status":
+      setButtonsState(d.undo, d.redo);
+      break;
+
+    // --- Handle live cursor movement ---
     case "cursor": {
       const rect = canvas.getBoundingClientRect();
-      const cx = rect.left + data.x * rect.width;
-      const cy = rect.top + data.y * rect.height;
-      cursors[data.userId] = { x: cx, y: cy, color: data.color };
+      const cx = rect.left + d.x * rect.width;
+      const cy = rect.top + d.y * rect.height;
+      cursors[d.userId] = { x: cx, y: cy, color: d.color };
       renderCursors();
       break;
     }
 
-    case "init":
-    case "update-canvas": {
-      redrawFromHistory(data.history || []);
+    case "disconnect": {
+      delete cursors[d.userId];
+      renderCursors();
       break;
     }
-
-    case "clear": {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      break;
-    }
-
-    default:
-      console.warn("⚠️ Unknown message:", data.type);
   }
 };
 
-// --- Render cursors ---
+// --- Render all active cursors ---
 function renderCursors() {
   overlay.innerHTML = "";
-  for (const [id, c] of Object.entries(cursors)) {
-    if (id === userId) continue;
+  Object.entries(cursors).forEach(([id, c]) => {
+    if (id === userId) return;
     const dot = document.createElement("div");
     dot.style.position = "absolute";
     dot.style.left = `${c.x}px`;
@@ -223,9 +212,10 @@ function renderCursors() {
     dot.style.boxShadow = "0 0 3px rgba(0,0,0,0.3)";
     dot.style.transform = "translate(-50%, -50%)";
     overlay.appendChild(dot);
-  }
+  });
 }
 
+// --- Keep cursors aligned on resize ---
 window.addEventListener("resize", renderCursors);
 window.addEventListener("beforeunload", () => {
   try { ws.send(JSON.stringify({ type: "disconnect", userId })); } catch {}
