@@ -9,59 +9,78 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, "..", "client")));
 
-let drawHistory = [];
+let drawHistory = [];    // array of stroke objects
+let undoneHistory = [];  // stack for redo
 
 function broadcastAll(message) {
   for (const client of wss.clients) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
+    if (client.readyState === WebSocket.OPEN) client.send(message);
   }
 }
 
 function broadcastExceptSender(sender, message) {
   for (const client of wss.clients) {
-    if (client !== sender && client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
+    if (client !== sender && client.readyState === WebSocket.OPEN) client.send(message);
   }
 }
 
 wss.on("connection", (ws) => {
   console.log("🟢 Client connected");
 
-  if (drawHistory.length > 0) {
-    ws.send(JSON.stringify({ type: "init", history: drawHistory }));
-  }
+  // send whole history to new client
+  ws.send(JSON.stringify({ type: "init", history: drawHistory }));
 
   ws.on("message", (msg) => {
+    let data;
     try {
-      const data = JSON.parse(msg.toString());
-
-      switch (data.type) {
-        case "draw":
-          drawHistory.push(data); // includes eraser flag!
-          broadcastExceptSender(ws, JSON.stringify(data));
-          break;
-
-        case "cursor":
-          broadcastExceptSender(ws, JSON.stringify(data));
-          break;
-
-        case "disconnect":
-          broadcastExceptSender(ws, JSON.stringify(data));
-          break;
-
-        case "clear":
-          drawHistory = [];
-          broadcastAll(JSON.stringify({ type: "clear" }));
-          break;
-
-        default:
-          console.warn("⚠️ Unknown message type:", data.type);
-      }
+      data = JSON.parse(msg.toString());
     } catch (err) {
-      console.error("❌ Invalid message:", err.message);
+      console.error("Invalid JSON message:", err);
+      return;
+    }
+
+    switch (data.type) {
+      case "stroke": // a full stroke sent on mouseup
+        // store stroke (assume points normalized)
+        drawHistory.push(data);
+        // new stroke invalidates redo stack
+        undoneHistory = [];
+        // broadcast to other clients (sender already drew locally)
+        broadcastExceptSender(ws, JSON.stringify({ type: "stroke", stroke: data }));
+        break;
+
+      case "cursor":
+        broadcastExceptSender(ws, JSON.stringify(data));
+        break;
+
+      case "clear":
+        drawHistory = [];
+        undoneHistory = [];
+        broadcastAll(JSON.stringify({ type: "clear" }));
+        break;
+
+      case "undo":
+        if (drawHistory.length > 0) {
+          const popped = drawHistory.pop();
+          undoneHistory.push(popped);
+          broadcastAll(JSON.stringify({ type: "update-canvas", history: drawHistory }));
+        }
+        break;
+
+      case "redo":
+        if (undoneHistory.length > 0) {
+          const restored = undoneHistory.pop();
+          drawHistory.push(restored);
+          broadcastAll(JSON.stringify({ type: "update-canvas", history: drawHistory }));
+        }
+        break;
+
+      case "disconnect":
+        broadcastExceptSender(ws, JSON.stringify(data));
+        break;
+
+      default:
+        console.warn("Unknown message type:", data.type);
     }
   });
 
@@ -69,6 +88,4 @@ wss.on("connection", (ws) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
