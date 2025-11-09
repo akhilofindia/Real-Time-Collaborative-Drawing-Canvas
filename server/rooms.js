@@ -1,174 +1,139 @@
-export class RoomCanvas {
-  constructor({ roomId, username }) {
-    this.roomId = roomId;
-    this.username = username;
-    this.userId = "user-" + Math.random().toString(36).slice(2, 8);
-    this.userColor = "#" + Math.floor(Math.random() * 16777215).toString(16);
-    this.localHistory = [];
-    this.drawing = false;
-    this.currentTool = "brush";
-    this.pointsBuffer = [];
-    this.ws = null;
-    this.cursors = {};
+// server/rooms.js
+const { buildHistory, handleUndoRedo } = require("./drawing-state");
 
-    this.setupCanvas();
-    this.setupToolbar();
-    this.setupWebSocket();
-  }
+const rooms = new Map(); // roomId -> { users: Map(userId -> ws), history: [], undone: [] }
 
-  setupCanvas() {
-    this.canvas = document.createElement("canvas");
-    this.canvas.className = "drawing-canvas";
-    document.body.appendChild(this.canvas);
-    this.ctx = this.canvas.getContext("2d");
-
-    const ratio = 1000 / 700;
-    const fitCanvas = () => {
-      let w = window.innerWidth * 0.9;
-      let h = w / ratio;
-      if (h > window.innerHeight * 0.8) {
-        h = window.innerHeight * 0.8;
-        w = h * ratio;
-      }
-      this.canvas.width = w;
-      this.canvas.height = h;
-      this.redrawAll();
-    };
-    fitCanvas();
-    window.addEventListener("resize", fitCanvas);
-  }
-
-  setupToolbar() {
-    const toolbar = document.createElement("div");
-    toolbar.className = "toolbar";
-    toolbar.innerHTML = `
-      <span class="room-display">🟢 Room: ${this.roomId}</span>
-      <button id="brush">Brush</button>
-      <button id="rect">Rect</button>
-      <button id="circle">Circle</button>
-      <button id="eraser">Eraser</button>
-      <button id="clear">Clear</button>
-      <button id="undo">Undo</button>
-      <button id="redo">Redo</button>
-    `;
-    document.body.appendChild(toolbar);
-
-    toolbar.querySelector("#brush").onclick = () => this.currentTool = "brush";
-    toolbar.querySelector("#rect").onclick = () => this.currentTool = "rect";
-    toolbar.querySelector("#circle").onclick = () => this.currentTool = "circle";
-    toolbar.querySelector("#eraser").onclick = () => this.currentTool = "eraser";
-    toolbar.querySelector("#clear").onclick = () => this.clearCanvas();
-    toolbar.querySelector("#undo").onclick = () => this.ws.send(JSON.stringify({ type: "undo" }));
-    toolbar.querySelector("#redo").onclick = () => this.ws.send(JSON.stringify({ type: "redo" }));
-
-    this.canvas.addEventListener("mousedown", e => this.startDraw(e));
-    this.canvas.addEventListener("mousemove", e => this.moveDraw(e));
-    this.canvas.addEventListener("mouseup", e => this.endDraw(e));
-  }
-
-  setupWebSocket() {
-    this.ws = new WebSocket(`ws://${window.location.host}`);
-    this.ws.onopen = () => {
-      this.ws.send(JSON.stringify({
-        type: "register",
-        userId: this.userId,
-        color: this.userColor,
-        name: this.username,
-        roomId: this.roomId
-      }));
-    };
-
-    this.ws.onmessage = (e) => {
-      const d = JSON.parse(e.data);
-      switch (d.type) {
-        case "init":
-          this.localHistory = d.history || [];
-          this.redrawAll();
-          break;
-        case "stroke":
-          this.localHistory.push(d.stroke);
-          this.renderStroke(d.stroke);
-          break;
-        case "update-canvas":
-          this.localHistory = d.history || [];
-          this.redrawAll();
-          break;
-        case "clear":
-          this.localHistory = [];
-          this.redrawAll();
-          break;
-      }
-    };
-  }
-
-  getNormPos(e) {
-    const rect = this.canvas.getBoundingClientRect();
-    return {
-      x: (e.clientX - rect.left) / rect.width,
-      y: (e.clientY - rect.top) / rect.height
-    };
-  }
-
-  startDraw(e) {
-    this.drawing = true;
-    this.pointsBuffer = [this.getNormPos(e)];
-  }
-
-  moveDraw(e) {
-    if (!this.drawing) return;
-    const pos = this.getNormPos(e);
-    const last = this.pointsBuffer[this.pointsBuffer.length - 1];
-    const ctx = this.ctx;
-
-    if (this.currentTool === "brush" || this.currentTool === "eraser") {
-      ctx.beginPath();
-      ctx.moveTo(last.x * this.canvas.width, last.y * this.canvas.height);
-      ctx.lineTo(pos.x * this.canvas.width, pos.y * this.canvas.height);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = this.currentTool === "eraser" ? "white" : this.userColor;
-      ctx.stroke();
-      this.pointsBuffer.push(pos);
+function broadcastToRoom(roomId, msgObj, except = null) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  const data = JSON.stringify(msgObj);
+  for (const [, client] of room.users.entries()) {
+    if (client.readyState === 1 && client !== except) {
+      client.send(data);
     }
-  }
-
-  endDraw() {
-    if (!this.drawing) return;
-    this.drawing = false;
-    if (this.pointsBuffer.length < 2) return;
-
-    const stroke = {
-      type: "stroke",
-      kind: "free",
-      userId: this.userId,
-      color: this.userColor,
-      width: 3,
-      points: this.pointsBuffer
-    };
-    this.localHistory.push(stroke);
-    this.ws.send(JSON.stringify(stroke));
-  }
-
-  redrawAll() {
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    for (const s of this.localHistory) this.renderStroke(s);
-  }
-
-  renderStroke(stroke) {
-    const ctx = this.ctx;
-    if (stroke.kind === "free") {
-      for (let i = 1; i < stroke.points.length; i++) {
-        const a = stroke.points[i - 1], b = stroke.points[i];
-        ctx.beginPath();
-        ctx.moveTo(a.x * this.canvas.width, a.y * this.canvas.height);
-        ctx.lineTo(b.x * this.canvas.width, b.y * this.canvas.height);
-        ctx.lineWidth = stroke.width;
-        ctx.strokeStyle = stroke.color;
-        ctx.stroke();
-      }
-    }
-  }
-
-  clearCanvas() {
-    this.ws.send(JSON.stringify({ type: "clear" }));
   }
 }
+
+function broadcastUsers(roomId) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  const users = Array.from(room.users.entries()).map(([id, ws]) => ({
+    userId: id,
+    name: ws.name,
+    color: ws.color,
+  }));
+  broadcastToRoom(roomId, { type: "online-users", users });
+}
+
+function deleteRoomIfEmpty(roomId) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  if (room.users.size === 0) {
+    rooms.delete(roomId);
+    console.log(`🧹 Deleted empty room: ${roomId}`);
+  }
+}
+
+function handleMessage(ws, d) {
+  switch (d.type) {
+    case "register": {
+      const { roomId = "default", create = false } = d;
+
+      if (create) {
+        if (!rooms.has(roomId)) {
+          rooms.set(roomId, { users: new Map(), history: [], undone: [] });
+          console.log(`🆕 Created new room: ${roomId}`);
+        } else {
+          console.log(`⚠️ Create requested but room already exists: ${roomId} — joining instead.`);
+        }
+      } else {
+        if (!rooms.has(roomId)) {
+          ws.send(JSON.stringify({ type: "no-room", roomId }));
+          return;
+        }
+      }
+
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      ws.userId = d.userId;
+      ws.name = d.name || "Anonymous";
+      ws.color = d.color || "#000000";
+      ws.roomId = roomId;
+
+      room.users.set(ws.userId, ws);
+      console.log(`👤 ${ws.name} joined room ${roomId}`);
+
+      // send current canvas history
+      ws.send(JSON.stringify({ type: "init", history: buildHistory(room) }));
+      broadcastUsers(roomId);
+      break;
+    }
+
+    case "draw-segment":
+    case "shape-preview":
+    case "cursor": {
+      const room = rooms.get(ws.roomId);
+      if (!room) return;
+      broadcastToRoom(ws.roomId, d, ws);
+      break;
+    }
+
+    case "stroke":
+    case "shape":
+    case "text": {
+      const room = rooms.get(ws.roomId);
+      if (!room) return;
+      const kind = d.kind || d.type;
+      room.history.push({ type: kind, data: d });
+      room.undone = [];
+      broadcastToRoom(ws.roomId, { type: "stroke", stroke: d }, ws);
+      break;
+    }
+
+    case "clear": {
+      const room = rooms.get(ws.roomId);
+      if (!room) return;
+      room.history.push({ type: "clear", data: null });
+      room.undone = [];
+      broadcastToRoom(ws.roomId, { type: "clear" });
+      break;
+    }
+
+    case "undo": {
+      const room = rooms.get(ws.roomId);
+      if (!room) return;
+      handleUndoRedo(room, "undo");
+      broadcastToRoom(ws.roomId, { type: "update-canvas", history: buildHistory(room) });
+      break;
+    }
+
+    case "redo": {
+      const room = rooms.get(ws.roomId);
+      if (!room) return;
+      handleUndoRedo(room, "redo");
+      broadcastToRoom(ws.roomId, { type: "update-canvas", history: buildHistory(room) });
+      break;
+    }
+
+    case "disconnect": {
+      const room = rooms.get(ws.roomId);
+      if (!room) return;
+      room.users.delete(ws.userId);
+      broadcastUsers(ws.roomId);
+      deleteRoomIfEmpty(ws.roomId);
+      break;
+    }
+
+    case "ping": {
+      // reply with pong, echo sentAt for latency calc
+      ws.send(JSON.stringify({ type: "pong", sentAt: d.sentAt }));
+      break;
+    }
+
+    default:
+      console.warn("⚠️ Unknown message type:", d.type);
+  }
+}
+
+module.exports = { rooms, broadcastToRoom, broadcastUsers, deleteRoomIfEmpty, handleMessage };

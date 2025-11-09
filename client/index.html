@@ -50,9 +50,7 @@
       transition: opacity 0.3s ease;
       opacity: 0;
     }
-    .error-msg.show {
-      opacity: 1;
-    }
+    .error-msg.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -95,7 +93,6 @@
         return;
       }
 
-      // Check existence before navigating
       const exists = await roomExists(code);
       if (!exists) {
         errorBox.textContent = "❌ Room not found. Check the code or create a new one.";
@@ -103,7 +100,6 @@
         return;
       }
 
-      // Navigate if exists
       window.location.href = `board.html?room=${encodeURIComponent(code)}`;
     };
 

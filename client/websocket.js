@@ -1,38 +1,21 @@
 // client/websocket.js
-const socket = io();
+export function setupWebSocket({ userId, username, userColor, roomId, createRoom }) {
+  const ws = new WebSocket(`ws://${window.location.host}`);
 
+  ws.safeSend = (obj) => {
+    try { ws.send(JSON.stringify(obj)); } catch (err) { /* ignore */ }
+  };
 
-function joinRoom(roomId, userName) {
-socket.emit('join', { roomId, userName });
+  ws.addEventListener("open", () => {
+    ws.safeSend({
+      type: "register",
+      userId,
+      name: username,
+      color: userColor,
+      roomId,
+      create: createRoom
+    });
+  });
+
+  return ws;
 }
-
-
-function sendStroke(op) {
-socket.emit('stroke', op);
-}
-
-
-function sendCursor(c) {
-socket.emit('cursor', c);
-}
-
-
-function sendUndo(payload) {
-socket.emit('undo', payload);
-}
-
-
-function sendRedo(payload) {
-socket.emit('redo', payload);
-}
-
-
-// expose
-window.collabSocket = {
-socket,
-joinRoom,
-sendStroke,
-sendCursor,
-sendUndo,
-sendRedo
-};

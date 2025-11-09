@@ -59,23 +59,17 @@
       color: white;
     }
 
-    #toolbar button:hover {
-      background: #ddd;
-    }
+    #toolbar button:hover { background: #ddd; }
 
-    #toolbar input[type="color"],
-    #toolbar input[type="range"] {
-      cursor: pointer;
-    }
+    #toolbar input[type="color"], #toolbar input[type="range"] { cursor: pointer; }
 
-    /* 🪄 The fix — push the canvas below the toolbar */
     #canvasContainer {
       display: flex;
       justify-content: center;
       align-items: center;
       width: 100%;
-      height: calc(100vh - 120px); /* 120px leaves space for toolbar + top banner */
-      margin-top: 120px; /* ensures no overlap visually */
+      height: calc(100vh - 120px);
+      margin-top: 120px;
     }
 
     canvas {
@@ -109,6 +103,7 @@
     <canvas id="cvs"></canvas>
   </div>
 
-  <script type="module" src="canvas.js"></script>
+  <!-- load main module -->
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
