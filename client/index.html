@@ -8,19 +8,25 @@
 <body>
     <h2>🎨 Collaborative Canvas (WebSocket)</h2>
 
+   <!-- ===== Toolbar ===== -->
     <div id="toolbar">
-        <input type="color" id="color" />
-        <input type="range" id="width" min="1" max="20" value="3" />
+        <button id="brush" class="active">🖌️ Brush</button>
         <button id="eraser">🧽 Eraser</button>
-        <button id="clear">🧹 Clear</button>
-        <button id="undo">↩️ Undo</button>
-        <button id="redo">↪️ Redo</button>
-        <button id="brush">✏️ Brush</button>
-        <button id="rect">Rectangle</button>
-        <button id="circle">Circle</button>
-        <button id="text">Text</button>
+        <button id="rect">⬛ Rectangle</button>
+        <button id="circle">⚪ Circle</button>
+        <button id="text">🔤 Text</button>
+
+        <input type="color" id="color" value="#000000" title="Color picker" />
+        <input type="range" id="width" min="1" max="20" value="3" title="Brush width" />
+
+        <button id="undo" disabled>↩️ Undo</button>
+        <button id="redo" disabled>↪️ Redo</button>
+        <button id="clear">🗑️ Clear</button>
     </div>
+
+    <!-- ===== Canvas ===== -->
     <canvas id="cvs"></canvas>
+
     <script src="canvas.js"></script>
 </body>
 </html>

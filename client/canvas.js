@@ -259,13 +259,21 @@ if (!username) {
   }
 
   // attach events
+  // ---- MOUSE EVENTS ----
   canvas.addEventListener("mousedown", pointerDown);
-  canvas.addEventListener("mousemove", pointerMove);
-  canvas.addEventListener("mouseup", pointerUp);
-  canvas.addEventListener("mouseleave", () => drawing = false);
+  document.addEventListener("mousemove", pointerMove);
+  document.addEventListener("mouseup", pointerUp);
+  canvas.addEventListener("mouseleave", (e) => {
+    // finalize shape if user drags outside
+    if (drawing) pointerUp(e);
+  });
+
+  // ---- TOUCH EVENTS ----
   canvas.addEventListener("touchstart", (e) => { pointerDown(e); }, { passive: false });
-  canvas.addEventListener("touchmove", (e) => { pointerMove(e); }, { passive: false });
-  canvas.addEventListener("touchend", (e) => { pointerUp(e); });
+  document.addEventListener("touchmove", (e) => { pointerMove(e); }, { passive: false });
+  document.addEventListener("touchend", (e) => { pointerUp(e); }, { passive: false });
+  document.addEventListener("touchcancel", (e) => { pointerUp(e); }, { passive: false });
+
 
   // ---- WebSocket ----
   const ws = new WebSocket(`ws://${window.location.host}`);
