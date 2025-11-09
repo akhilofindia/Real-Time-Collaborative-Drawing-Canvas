@@ -8,146 +8,210 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+// Serve static files
 app.use(express.static(path.join(__dirname, "..", "client")));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "..", "client", "index.html"));
+});
+// Simple room existence API for join-page pre-check
+app.get("/room-exists/:id", (req, res) => {
+  const id = req.params.id;
+  const exists = rooms.has(id);
+  res.json({ exists });
+});
 
-let users = {};
-let drawHistory = []; // entries: { type: 'stroke' | 'clear', data or prevState }
-let undoneHistory = [];
+// --- ROOM STORE ---
+const rooms = new Map(); // roomId -> { users: Map(userId -> ws), history: [], undone: [] }
 
-// --- Helper functions ---
-function broadcastAll(obj) {
-  const str = JSON.stringify(obj);
-  for (const c of wss.clients) {
-    if (c.readyState === WebSocket.OPEN) c.send(str);
+// --- HELPERS ---
+function broadcastToRoom(roomId, msgObj, except = null) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  const data = JSON.stringify(msgObj);
+  for (const [, client] of room.users.entries()) {
+    if (client.readyState === WebSocket.OPEN && client !== except) {
+      client.send(data);
+    }
   }
 }
 
-function broadcastExcept(sender, obj) {
-  const str = JSON.stringify(obj);
-  for (const c of wss.clients) {
-    if (c !== sender && c.readyState === WebSocket.OPEN) c.send(str);
-  }
+function buildHistory(room) {
+  return room.history
+    .filter((op) => op.type !== "clear")
+    .map((op) => op.data);
 }
 
-function sendQueueStatus() {
-  broadcastAll({ type: "queue-status", undo: drawHistory.length, redo: undoneHistory.length });
-}
-
-function broadcastUsers() {
-  const online = Object.entries(users).map(([id, u]) => ({
+function broadcastUsers(roomId) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  const users = Array.from(room.users.entries()).map(([id, ws]) => ({
     userId: id,
-    color: u.color,
-    name: u.name,
+    name: ws.name,
+    color: ws.color,
   }));
-  broadcastAll({ type: "online-users", users: online });
+  broadcastToRoom(roomId, { type: "online-users", users });
 }
 
-function buildCurrentStrokes() {
-  const strokes = [];
-  for (const op of drawHistory) {
-    if (op.type === "stroke") strokes.push(op.data);
-    else if (op.type === "clear") strokes.length = 0;
+function deleteRoomIfEmpty(roomId) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  if (room.users.size === 0) {
+    rooms.delete(roomId);
+    console.log(`🧹 Deleted empty room: ${roomId}`);
   }
-  return strokes;
 }
 
-// --- WebSocket connection handling ---
+// --- MAIN HANDLER ---
 wss.on("connection", (ws) => {
   console.log("🟢 Client connected");
 
-  // Send current canvas state
-  ws.send(JSON.stringify({ type: "init", history: buildCurrentStrokes() }));
-  sendQueueStatus();
-  broadcastUsers();
-
   ws.on("message", (msg) => {
-    let data;
+    let d;
     try {
-      data = JSON.parse(msg.toString());
+      d = JSON.parse(msg.toString());
     } catch {
-      console.error("❌ Invalid JSON message");
+      console.warn("❌ Invalid JSON message");
       return;
     }
 
-    switch (data.type) {
-      // --- Register a new user ---
-      case "register":
-        users[data.userId] = { color: data.color, name: data.name || "Anonymous" };
-        ws.userId = data.userId;
-        broadcastUsers();
-        break;
+    switch (d.type) {
+      // --- Register new user into a room ---
+      case "register": {
+        const { roomId = "default", create = false } = d;
 
-      // --- Ephemeral events (not stored) ---
+        // If creating: create only when the room DOES NOT already exist.
+        // IMPORTANT: do NOT reset an existing room on create requests.
+        if (create) {
+          if (rooms.has(roomId)) {
+            console.log(`⚠️ Create requested but room already exists: ${roomId} — will join existing room instead.`);
+            // (optional) could notify the client, but not necessary — they'll get init below
+          } else {
+            rooms.set(roomId, { users: new Map(), history: [], undone: [] });
+            console.log(`🆕 Created new room: ${roomId}`);
+          }
+        } else {
+          // Joining (not creating) must only succeed if room exists
+          if (!rooms.has(roomId)) {
+            console.log(`❌ Tried joining non-existent room: ${roomId}`);
+            ws.send(JSON.stringify({ type: "no-room", roomId }));
+            return;
+          }
+        }
+
+        const room = rooms.get(roomId);
+        if (!room) return;
+
+        ws.userId = d.userId;
+        ws.name = d.name || "Anonymous";
+        ws.color = d.color || "#000000";
+        ws.roomId = roomId;
+
+        room.users.set(ws.userId, ws);
+        console.log(`👤 ${ws.name} joined room ${roomId}`);
+
+        // Send existing canvas state
+        ws.send(JSON.stringify({ type: "init", history: buildHistory(room) }));
+        broadcastUsers(roomId);
+        break;
+      }
+
+      // --- Drawing / Preview / Cursor ---
       case "draw-segment":
       case "shape-preview":
-      case "cursor":
-        broadcastExcept(ws, data);
+      case "cursor": {
+        const room = rooms.get(ws.roomId);
+        if (!room) return;
+        broadcastToRoom(ws.roomId, d, ws);
         break;
+      }
 
-      // --- Committed strokes (free, shape, or text) ---
+      // --- Stroke / Shape / Text ---
       case "stroke":
       case "shape":
-      case "text":
-        drawHistory.push({ type: "stroke", data });
-        undoneHistory = [];
-        broadcastExcept(ws, { type: "stroke", stroke: data });
-        sendQueueStatus();
+      case "text": {
+        const room = rooms.get(ws.roomId);
+        if (!room) return;
+        const kind = d.kind || d.type;
+        room.history.push({ type: kind, data: d });
+        room.undone = [];
+        broadcastToRoom(ws.roomId, { type: "stroke", stroke: d }, ws);
         break;
+      }
 
-      // --- Clear Canvas (undoable) ---
-      case "clear":
-        drawHistory.push({ type: "clear", prevState: buildCurrentStrokes() });
-        undoneHistory = [];
-        broadcastAll({ type: "clear" });
-        sendQueueStatus();
+      // --- Clear ---
+      case "clear": {
+        const room = rooms.get(ws.roomId);
+        if (!room) return;
+        room.history.push({ type: "clear", data: null });
+        room.undone = [];
+        broadcastToRoom(ws.roomId, { type: "clear" });
         break;
+      }
 
       // --- Undo ---
-      case "undo":
-        if (drawHistory.length > 0) {
-          const last = drawHistory.pop();
-          undoneHistory.push(last);
-          broadcastAll({ type: "update-canvas", history: buildCurrentStrokes() });
-          sendQueueStatus();
+      case "undo": {
+        const room = rooms.get(ws.roomId);
+        if (!room) return;
+        if (room.history.length > 0) {
+          const last = room.history.pop();
+          room.undone.push(last);
+          broadcastToRoom(ws.roomId, {
+            type: "update-canvas",
+            history: buildHistory(room),
+          });
         }
         break;
+      }
 
       // --- Redo ---
-      case "redo":
-        if (undoneHistory.length > 0) {
-          const redone = undoneHistory.pop();
-          drawHistory.push(redone);
-          broadcastAll({ type: "update-canvas", history: buildCurrentStrokes() });
-          sendQueueStatus();
+      case "redo": {
+        const room = rooms.get(ws.roomId);
+        if (!room) return;
+        if (room.undone.length > 0) {
+          const redo = room.undone.pop();
+          room.history.push(redo);
+          broadcastToRoom(ws.roomId, {
+            type: "update-canvas",
+            history: buildHistory(room),
+          });
         }
         break;
+      }
 
-      // --- Ping-Pong latency check ---
-      case "ping":
-        ws.send(JSON.stringify({ type: "pong", sentAt: data.sentAt }));
+      // --- Disconnect manually ---
+      case "disconnect": {
+        const room = rooms.get(ws.roomId);
+        if (!room) return;
+        room.users.delete(ws.userId);
+        broadcastUsers(ws.roomId);
+        deleteRoomIfEmpty(ws.roomId);
         break;
+      }
 
-      // --- Disconnect notice ---
-      case "disconnect":
-        broadcastExcept(ws, data);
+      // --- Ping/Pong ---
+      case "ping":
+        ws.send(JSON.stringify({ type: "pong", sentAt: d.sentAt }));
         break;
 
       default:
-        console.warn("⚠️ Unknown message type:", data.type);
+        console.warn("⚠️ Unknown message type:", d.type);
     }
   });
 
-  // --- Handle disconnection ---
+  // --- Client closed connection ---
   ws.on("close", () => {
-    if (ws.userId) {
-      delete users[ws.userId];
-      broadcastUsers();
+    if (ws.roomId && rooms.has(ws.roomId)) {
+      const room = rooms.get(ws.roomId);
+      if (room && ws.userId) room.users.delete(ws.userId);
+      broadcastUsers(ws.roomId);
+      deleteRoomIfEmpty(ws.roomId);
     }
     console.log("🔴 Client disconnected");
   });
 });
 
+// --- Start Server ---
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
-});
+server.listen(PORT, "0.0.0.0", () =>
+  console.log(`🚀 Server running at http://0.0.0.0:${PORT}`)
+);

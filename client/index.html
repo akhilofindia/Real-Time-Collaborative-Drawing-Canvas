@@ -1,32 +1,116 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-    <meta charset="UTF-8" />
-        <title>Collaborative Canvas</title>
-        <link rel="stylesheet" href="style.css" />
-    </head>
+<head>
+  <meta charset="UTF-8" />
+  <title>Scribble Rooms</title>
+  <style>
+    body {
+      background: #f3f3f3;
+      font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .room-box {
+      background: white;
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      text-align: center;
+      width: 320px;
+      position: relative;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      margin-bottom: 10px;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer;
+      margin-top: 5px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    .error-msg {
+      color: #c0392b;
+      font-size: 14px;
+      margin-top: 8px;
+      min-height: 20px;
+      transition: opacity 0.3s ease;
+      opacity: 0;
+    }
+    .error-msg.show {
+      opacity: 1;
+    }
+  </style>
+</head>
 <body>
-    <h2>🎨 Collaborative Canvas (WebSocket)</h2>
+  <div class="room-box">
+    <h2>🎨 Scribble Board</h2>
+    <input id="roomCode" type="text" placeholder="Enter room code" />
+    <button id="joinBtn">Join Room</button>
+    <div id="errorMsg" class="error-msg"></div>
+    <hr style="margin: 20px 0;">
+    <button id="createBtn" style="background: #28a745;">Create New Room</button>
+  </div>
 
-   <!-- ===== Toolbar ===== -->
-    <div id="toolbar">
-        <button id="brush" class="active">🖌️ Brush</button>
-        <button id="eraser">🧽 Eraser</button>
-        <button id="rect">⬛ Rectangle</button>
-        <button id="circle">⚪ Circle</button>
-        <button id="text">🔤 Text</button>
+  <script>
+    function randomCode() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    }
 
-        <input type="color" id="color" value="#000000" title="Color picker" />
-        <input type="range" id="width" min="1" max="20" value="3" title="Brush width" />
+    async function roomExists(code) {
+      try {
+        const res = await fetch(`/room-exists/${encodeURIComponent(code)}`);
+        if (!res.ok) return false;
+        const data = await res.json();
+        return data.exists === true;
+      } catch {
+        return false;
+      }
+    }
 
-        <button id="undo" disabled>↩️ Undo</button>
-        <button id="redo" disabled>↪️ Redo</button>
-        <button id="clear">🗑️ Clear</button>
-    </div>
+    const errorBox = document.getElementById("errorMsg");
+    const roomInput = document.getElementById("roomCode");
 
-    <!-- ===== Canvas ===== -->
-    <canvas id="cvs"></canvas>
+    document.getElementById("joinBtn").onclick = async () => {
+      const code = roomInput.value.trim();
+      errorBox.classList.remove("show");
+      errorBox.textContent = "";
+      if (!code) {
+        errorBox.textContent = "Please enter a valid room code.";
+        errorBox.classList.add("show");
+        return;
+      }
 
-    <script src="canvas.js"></script>
+      // Check existence before navigating
+      const exists = await roomExists(code);
+      if (!exists) {
+        errorBox.textContent = "❌ Room not found. Check the code or create a new one.";
+        errorBox.classList.add("show");
+        return;
+      }
+
+      // Navigate if exists
+      window.location.href = `board.html?room=${encodeURIComponent(code)}`;
+    };
+
+    document.getElementById("createBtn").onclick = () => {
+      const code = randomCode();
+      window.location.href = `board.html?room=${code}&create=1`;
+    };
+  </script>
 </body>
 </html>
