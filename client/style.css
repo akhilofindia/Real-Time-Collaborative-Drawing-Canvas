@@ -27,7 +27,7 @@ canvas {
   background: #fff;
 }
 
-#eraser.active {
+#brush.active,#rect.active,#circle.active,#text.active,#eraser.active {
   background: #ff5252;
   color: white;
   border: none;
