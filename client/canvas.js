@@ -1,6 +1,9 @@
 // --- WebSocket setup ---
 const ws = new WebSocket(`ws://${window.location.host}`);
-ws.onopen = () => console.log("✅ Connected to WebSocket server");
+ws.onopen = () => {
+  console.log("✅ Connected to WebSocket server");
+  ws.send(JSON.stringify({ type: "register", userId, color: userColor }));
+};
 
 // --- Canvas setup ---
 const canvas = document.getElementById("cvs");
@@ -56,7 +59,7 @@ clearBtn.addEventListener("click", () => ws.send(JSON.stringify({ type: "clear" 
 undoBtn.addEventListener("click", () => ws.send(JSON.stringify({ type: "undo" })));
 redoBtn.addEventListener("click", () => ws.send(JSON.stringify({ type: "redo" })));
 
-// --- Cursor overlay (for other users) ---
+// --- Cursor overlay ---
 const cursors = {};
 const overlay = document.createElement("div");
 overlay.id = "cursor-overlay";
@@ -67,6 +70,37 @@ overlay.style.width = "100vw";
 overlay.style.height = "100vh";
 overlay.style.pointerEvents = "none";
 document.body.appendChild(overlay);
+
+// --- Online users panel ---
+const userPanel = document.createElement("div");
+userPanel.id = "user-panel";
+userPanel.style.position = "fixed";
+userPanel.style.right = "20px";
+userPanel.style.top = "20px";
+userPanel.style.background = "rgba(255,255,255,0.9)";
+userPanel.style.padding = "10px 15px";
+userPanel.style.borderRadius = "12px";
+userPanel.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
+userPanel.style.fontFamily = "sans-serif";
+userPanel.style.maxWidth = "180px";
+userPanel.style.fontSize = "14px";
+document.body.appendChild(userPanel);
+
+function renderUserPanel(users) {
+  userPanel.innerHTML = `<strong>👥 Online Users (${users.length})</strong><br>`;
+  users.forEach(u => {
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.alignItems = "center";
+    row.style.marginTop = "4px";
+    row.innerHTML = `
+      <span style="display:inline-block;width:12px;height:12px;background:${u.color};
+                   border-radius:50%;margin-right:6px;"></span>
+      ${u.userId === userId ? "<strong>You</strong>" : u.userId}
+    `;
+    userPanel.appendChild(row);
+  });
+}
 
 // --- Drawing helpers ---
 function drawLine(x1, y1, x2, y2, color, width, eraser) {
@@ -95,11 +129,10 @@ function redrawFromHistory(history = []) {
   for (const s of history) drawStroke(s);
 }
 
-// --- Unified pointer logic (works for mouse + touch) ---
+// --- Pointer helpers ---
 function getNormPos(e) {
   const rect = canvas.getBoundingClientRect();
   let x, y;
-
   if (e.touches && e.touches.length > 0) {
     x = e.touches[0].clientX - rect.left;
     y = e.touches[0].clientY - rect.top;
@@ -107,15 +140,14 @@ function getNormPos(e) {
     x = e.clientX - rect.left;
     y = e.clientY - rect.top;
   }
-
   return { x: x / rect.width, y: y / rect.height };
 }
 
+// --- Drawing Events (mouse + touch) ---
 function startDraw(e) {
   e.preventDefault();
   drawing = true;
   pointsBuffer = [];
-
   const { x, y } = getNormPos(e);
   pointsBuffer.push({ x, y });
   lastNorm = { x, y };
@@ -123,15 +155,7 @@ function startDraw(e) {
 
 function moveDraw(e) {
   const { x, y } = getNormPos(e);
-
-  // Send cursor position for others
-  ws.send(JSON.stringify({
-    type: "cursor",
-    userId,
-    x,
-    y,
-    color: userColor
-  }));
+  ws.send(JSON.stringify({ type: "cursor", userId, x, y, color: userColor }));
 
   if (!drawing) return;
 
@@ -155,25 +179,22 @@ function endDraw() {
     points: pointsBuffer,
     timestamp: Date.now(),
   };
-
   ws.send(JSON.stringify(stroke));
   pointsBuffer = [];
   lastNorm = null;
 }
 
-// --- Attach mouse events ---
+// Attach listeners
 canvas.addEventListener("mousedown", startDraw);
 canvas.addEventListener("mousemove", moveDraw);
 canvas.addEventListener("mouseup", endDraw);
 canvas.addEventListener("mouseleave", endDraw);
-
-// --- Attach touch events (for phones/tablets) ---
 canvas.addEventListener("touchstart", startDraw, { passive: false });
 canvas.addEventListener("touchmove", moveDraw, { passive: false });
 canvas.addEventListener("touchend", endDraw);
 canvas.addEventListener("touchcancel", endDraw);
 
-// --- WebSocket message handling ---
+// --- WebSocket Message Handling ---
 ws.onmessage = (e) => {
   const d = JSON.parse(e.data);
   switch (d.type) {
@@ -207,11 +228,14 @@ ws.onmessage = (e) => {
       break;
     }
 
-    case "disconnect": {
+    case "online-users":
+      renderUserPanel(d.users);
+      break;
+
+    case "disconnect":
       delete cursors[d.userId];
       renderCursors();
       break;
-    }
   }
 };
 
