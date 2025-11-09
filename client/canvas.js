@@ -69,19 +69,23 @@ const createRoom = params.get("create") === "1"; // true only when creation requ
   const userPanel = document.createElement("div");
   Object.assign(userPanel.style, {
     position: "fixed",
-    right: "20px",
-    top: "20px",
-    background: "rgba(255,255,255,0.95)",
+    left: "16px",
+    bottom: "16px",
+    background: "rgba(0,0,0,0.75)",
+    color: "#fff",
     padding: "10px 14px",
-    borderRadius: "12px",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+    borderRadius: "10px",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
     fontFamily: "sans-serif",
-    fontSize: "14px",
+    fontSize: "13px",
     zIndex: 1200,
     minWidth: "160px",
     maxWidth: "240px",
+    userSelect: "none",
+    lineHeight: "1.4em",
   });
   document.body.appendChild(userPanel);
+
 
   function renderUserPanel(users) {
     if (!Array.isArray(users)) return;
@@ -464,6 +468,68 @@ const createRoom = params.get("create") === "1"; // true only when creation requ
   window.__scribble = {
     userId, userColor, roomId, getHistory: () => localHistory.slice()
   };
+
+    // --- PERFORMANCE METRICS (FPS + Latency) ---
+  const perfBox = document.createElement("div");
+  Object.assign(perfBox.style, {
+    position: "fixed",
+    bottom: "12px",
+    right: "16px",
+    background: "rgba(0,0,0,0.75)",
+    color: "#00ffcc",
+    fontFamily: "monospace",
+    fontSize: "13px",
+    padding: "6px 10px",
+    borderRadius: "8px",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+    zIndex: 1500,
+    lineHeight: "1.4em",
+    userSelect: "none",
+  });
+  document.body.appendChild(perfBox);
+
+  let lastFrameTime = performance.now();
+  let fps = 0;
+  let frameCount = 0;
+  let lastPingTime = 0;
+  let latency = 0;
+
+  function fpsLoop() {
+    const now = performance.now();
+    frameCount++;
+    if (now - lastFrameTime >= 1000) {
+      fps = frameCount;
+      frameCount = 0;
+      lastFrameTime = now;
+      updatePerfBox();
+    }
+    requestAnimationFrame(fpsLoop);
+  }
+
+  function updatePerfBox() {
+    perfBox.innerHTML = `⚡ FPS: ${fps}<br>🌐 Latency: ${latency.toFixed(1)} ms`;
+  }
+
+  // send a ping every 3s
+  setInterval(() => {
+    lastPingTime = performance.now();
+    safeSend({ type: "ping", sentAt: lastPingTime });
+  }, 3000);
+
+  // measure latency when pong arrives
+  ws.addEventListener("message", (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === "pong") {
+      const now = performance.now();
+      latency = now - (msg.sentAt || now);
+      updatePerfBox();
+      return;
+    }
+  }, false);
+
+  requestAnimationFrame(fpsLoop);
+  updatePerfBox();
 
   // initial render
   renderAll();
