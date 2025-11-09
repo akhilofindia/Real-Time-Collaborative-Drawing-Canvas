@@ -95,44 +95,53 @@ function redrawFromHistory(history = []) {
   for (const s of history) drawStroke(s);
 }
 
-// --- Mouse logic ---
-canvas.addEventListener("mousedown", (e) => {
+// --- Unified pointer logic (works for mouse + touch) ---
+function getNormPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  let x, y;
+
+  if (e.touches && e.touches.length > 0) {
+    x = e.touches[0].clientX - rect.left;
+    y = e.touches[0].clientY - rect.top;
+  } else {
+    x = e.clientX - rect.left;
+    y = e.clientY - rect.top;
+  }
+
+  return { x: x / rect.width, y: y / rect.height };
+}
+
+function startDraw(e) {
+  e.preventDefault();
   drawing = true;
   pointsBuffer = [];
-  const rect = canvas.getBoundingClientRect();
-  const nx = (e.clientX - rect.left) / rect.width;
-  const ny = (e.clientY - rect.top) / rect.height;
-  pointsBuffer.push({ x: nx, y: ny });
-  lastNorm = { x: nx, y: ny };
-});
 
-canvas.addEventListener("mousemove", (e) => {
-  const rect = canvas.getBoundingClientRect();
-  const nx = (e.clientX - rect.left) / rect.width;
-  const ny = (e.clientY - rect.top) / rect.height;
+  const { x, y } = getNormPos(e);
+  pointsBuffer.push({ x, y });
+  lastNorm = { x, y };
+}
 
-  // --- Send cursor live ---
+function moveDraw(e) {
+  const { x, y } = getNormPos(e);
+
+  // Send cursor position for others
   ws.send(JSON.stringify({
     type: "cursor",
     userId,
-    x: nx,
-    y: ny,
+    x,
+    y,
     color: userColor
   }));
 
   if (!drawing) return;
 
-  drawLine(lastNorm.x * canvas.width, lastNorm.y * canvas.height, nx * canvas.width, ny * canvas.height, color, strokeWidth, eraser);
-  ws.send(JSON.stringify({ type: "draw-segment", from: lastNorm, to: { x: nx, y: ny }, color, width: strokeWidth, eraser }));
+  drawLine(lastNorm.x * canvas.width, lastNorm.y * canvas.height, x * canvas.width, y * canvas.height, color, strokeWidth, eraser);
+  ws.send(JSON.stringify({ type: "draw-segment", from: lastNorm, to: { x, y }, color, width: strokeWidth, eraser }));
+  pointsBuffer.push({ x, y });
+  lastNorm = { x, y };
+}
 
-  pointsBuffer.push({ x: nx, y: ny });
-  lastNorm = { x: nx, y: ny };
-});
-
-canvas.addEventListener("mouseup", endStroke);
-canvas.addEventListener("mouseleave", endStroke);
-
-function endStroke() {
+function endDraw() {
   if (!drawing) return;
   drawing = false;
   if (pointsBuffer.length < 2) return;
@@ -151,6 +160,18 @@ function endStroke() {
   pointsBuffer = [];
   lastNorm = null;
 }
+
+// --- Attach mouse events ---
+canvas.addEventListener("mousedown", startDraw);
+canvas.addEventListener("mousemove", moveDraw);
+canvas.addEventListener("mouseup", endDraw);
+canvas.addEventListener("mouseleave", endDraw);
+
+// --- Attach touch events (for phones/tablets) ---
+canvas.addEventListener("touchstart", startDraw, { passive: false });
+canvas.addEventListener("touchmove", moveDraw, { passive: false });
+canvas.addEventListener("touchend", endDraw);
+canvas.addEventListener("touchcancel", endDraw);
 
 // --- WebSocket message handling ---
 ws.onmessage = (e) => {
@@ -173,12 +194,10 @@ ws.onmessage = (e) => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       break;
 
-    // --- Handle queue status ---
     case "queue-status":
       setButtonsState(d.undo, d.redo);
       break;
 
-    // --- Handle live cursor movement ---
     case "cursor": {
       const rect = canvas.getBoundingClientRect();
       const cx = rect.left + d.x * rect.width;
@@ -196,7 +215,7 @@ ws.onmessage = (e) => {
   }
 };
 
-// --- Render all active cursors ---
+// --- Render cursors ---
 function renderCursors() {
   overlay.innerHTML = "";
   Object.entries(cursors).forEach(([id, c]) => {
@@ -215,7 +234,6 @@ function renderCursors() {
   });
 }
 
-// --- Keep cursors aligned on resize ---
 window.addEventListener("resize", renderCursors);
 window.addEventListener("beforeunload", () => {
   try { ws.send(JSON.stringify({ type: "disconnect", userId })); } catch {}
