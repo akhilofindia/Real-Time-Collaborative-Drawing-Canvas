@@ -40,9 +40,11 @@ function broadcastUsers() {
   const online = Object.entries(users).map(([id, u]) => ({
     userId: id,
     color: u.color,
+    name: u.name
   }));
   broadcastAll({ type: "online-users", users: online });
 }
+
 
 // --- WebSocket Handlers ---
 wss.on("connection", (ws) => {
@@ -68,10 +70,11 @@ wss.on("connection", (ws) => {
     switch (data.type) {
       // --- Register new user ---
       case "register":
-        users[data.userId] = { color: data.color };
+        users[data.userId] = { color: data.color, name: data.name || "Anonymous" };
         ws.userId = data.userId;
         broadcastUsers();
         break;
+
 
       // --- Real-time drawing ---
       case "draw-segment":
