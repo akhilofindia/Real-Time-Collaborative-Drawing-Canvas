@@ -2,66 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Scribble Rooms</title>
-  <style>
-    body {
-      background: #f3f3f3;
-      font-family: sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-    }
-    .room-box {
-      background: white;
-      padding: 30px;
-      border-radius: 16px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      text-align: center;
-      width: 320px;
-      position: relative;
-    }
-    input {
-      width: 100%;
-      padding: 10px;
-      font-size: 16px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      margin-bottom: 10px;
-    }
-    button {
-      background: #007bff;
-      color: white;
-      border: none;
-      padding: 10px 16px;
-      border-radius: 8px;
-      font-size: 15px;
-      cursor: pointer;
-      margin-top: 5px;
-    }
-    button:hover {
-      background: #0056b3;
-    }
-    .error-msg {
-      color: #c0392b;
-      font-size: 14px;
-      margin-top: 8px;
-      min-height: 20px;
-      transition: opacity 0.3s ease;
-      opacity: 0;
-    }
-    .error-msg.show { opacity: 1; }
-  </style>
+  <title>Canvas Rooms</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="room-box">
-    <h2>🎨 Scribble Board</h2>
+    <h2>🎨 Collaborative Drawing Canvas</h2>
     <input id="roomCode" type="text" placeholder="Enter room code" />
     <button id="joinBtn">Join Room</button>
     <div id="errorMsg" class="error-msg"></div>
     <hr style="margin: 20px 0;">
     <button id="createBtn" style="background: #28a745;">Create New Room</button>
   </div>
+
+  <!-- 💖 Footer -->
+  <footer>
+    Made with <span>💖</span> by <strong>Akhil</strong>
+  </footer>
 
   <script>
     function randomCode() {

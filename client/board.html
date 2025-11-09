@@ -2,88 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Scribble Room Board</title>
-  <style>
-    body {
-      margin: 0;
-      background: #f9f9f9;
-      font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      overflow: hidden;
-    }
-
-    #roomCodeDisplay {
-      position: fixed;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.85);
-      color: #fff;
-      padding: 6px 14px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-family: monospace;
-      z-index: 1000;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    }
-
-    #toolbar {
-      position: fixed;
-      top: 50px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-      display: flex;
-      align-items: center;
-      padding: 8px 12px;
-      gap: 8px;
-      z-index: 999;
-    }
-
-    #toolbar button {
-      background: #eee;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: 0.2s;
-    }
-
-    #toolbar button.active {
-      background: #007bff;
-      color: white;
-    }
-
-    #toolbar button:hover { background: #ddd; }
-
-    #toolbar input[type="color"], #toolbar input[type="range"] { cursor: pointer; }
-
-    #canvasContainer {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      width: 100%;
-      height: calc(100vh - 120px);
-      margin-top: 120px;
-    }
-
-    canvas {
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
-      max-width: 95vw;
-      max-height: 85vh;
-      display: block;
-    }
-  </style>
+  <title>Real-Time Collaborative Drawing Canvas</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
+  <!-- 🏠 Back Button -->
+  <button id="backBtn">⬅</button>
   <div id="roomCodeDisplay"></div>
 
   <div id="toolbar">

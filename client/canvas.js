@@ -297,11 +297,31 @@ export function initCanvas({ ws, userId, username, userColor, roomId }) {
     try { msg = JSON.parse(ev.data); } catch { return; }
 
     // handle no-room immediately
+    // robust no-room handling
     if (msg.type === "no-room") {
-      alert("Room does not exist: " + msg.roomId + "\nCreate it first or check the code.");
-      window.location.href = "/";
+      const rid = (msg.roomId && msg.roomId.id) ? msg.roomId.id : msg.roomId;
+      alert(`Room does not exist: ${rid || "(unknown)"}\nCreate it first or check the code.`);
+      window.location.replace("/");
       return;
     }
+
+    // handle the server confirmation (either created or joined)
+    if (msg.type === "room-created-or-joined") {
+      // set local history from server
+      localHistory = (msg.history || []).map(s => {
+        if (!s.kind) {
+          if (s.points) s.kind = "free";
+          else if (s.shapeType) s.kind = "shape";
+          else if (s.text) s.kind = "text";
+        }
+        return s;
+      });
+      previewShape = null;
+      renderAll();
+      return
+    }
+  // you can show a toast "Room ready" if you want
+  // return; // we processed it
 
     switch (msg.type) {
       case "draw-segment":
@@ -356,6 +376,12 @@ export function initCanvas({ ws, userId, username, userColor, roomId }) {
       }
       case "online-users":
         renderUserPanel(msg.users || []);
+        // 💀 Clean up cursors that no longer exist
+        const activeIds = (msg.users || []).map(u => u.userId);
+        for (const id of Object.keys(cursors)) {
+          if (!activeIds.includes(id)) delete cursors[id];
+        }
+        renderCursors();
         break;
       case "pong":
         // handled by interval listener below; also could update latency

@@ -1,48 +1,165 @@
-h2{
+/* ===== Global Styles ===== */
+body {
+  background: #f3f3f3;
+  font-family: system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  margin: 0;
+}
+
+h2 {
   text-align: center;
 }
 
-/* ===== Toolbar Styling ===== */
+/* ===== Room Box (Home Page) ===== */
+.room-box {
+  background: white;
+  padding: 30px;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  text-align: center;
+  width: 320px;
+  position: relative;
+}
+
+input {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  margin-bottom: 10px;
+}
+
+button {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+  margin-top: 5px;
+}
+
+button:hover {
+  background: #0056b3;
+}
+
+.error-msg {
+  color: #c0392b;
+  font-size: 14px;
+  margin-top: 8px;
+  min-height: 20px;
+  transition: opacity 0.3s ease;
+  opacity: 0;
+}
+
+.error-msg.show { opacity: 1; }
+
+/* ===== Footer ===== */
+footer {
+  margin-top: 20px;
+  font-size: 14px;
+  color: #555;
+  text-align: center;
+  font-weight: 500;
+}
+
+footer span {
+  color: #e74c3c;
+  font-weight: bold;
+}
+
+/* ===== Toolbar Styling (High Contrast, Modern Look) ===== */
 #toolbar {
+  position: fixed;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  background: #f8f9fa;
-  border-bottom: 2px solid #ddd;
-  padding: 10px;
-  position: sticky;
-  top: 0;
-  z-index: 1000;
+  flex-wrap: nowrap;
+  padding: 12px 16px;
+  gap: 12px;
+  z-index: 999;
   font-family: system-ui, sans-serif;
 }
 
-#toolbar button,
-#toolbar input[type="color"],
-#toolbar input[type="range"] {
-  cursor: pointer;
-  padding: 6px 10px;
+/* Buttons */
+#toolbar button {
+  background: #f4f4f4;
   border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
-  font-size: 14px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
   transition: all 0.2s ease;
+  color: #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 #toolbar button:hover {
-  background: #f0f0f0;
+  background: #e0e0e0;
 }
 
 #toolbar button.active {
-  background: #007bff;
+  background: #0078ff;
   color: white;
-  border-color: #0069d9;
+  border-color: #005fcb;
+  box-shadow: 0 0 6px rgba(0, 120, 255, 0.5);
 }
 
-#toolbar input[type="range"] {
-  width: 100px;
+/* Inputs */
+#toolbar input[type="color"] {
+  width: 38px;
+  height: 38px;
+  border: 2px solid #ccc;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
+
+#toolbar input[type="color"]:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 6px rgba(0, 120, 255, 0.3);
+}
+
+/* Slider */
+#toolbar input[type="range"] {
+  width: 130px;
+  height: 6px;
+  accent-color: #0078ff;
+  cursor: pointer;
+  background: transparent;
+}
+
+#toolbar input[type="range"]::-webkit-slider-thumb {
+  background: #0078ff;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+}
+
+#toolbar input[type="range"]::-moz-range-thumb {
+  background: #0078ff;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+}
+
 
 /* ===== Canvas Styling ===== */
 #cvs {
@@ -52,4 +169,149 @@ h2{
   border: 2px solid #ddd;
   border-radius: 8px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+/* ===== Board Page Styling ===== */
+body {
+  margin: 0;
+  background: #f9f9f9;
+  font-family: system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+}
+
+/* Room Code Display */
+#roomCodeDisplay {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: monospace;
+  z-index: 1000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== Toolbar Styling (Fixed Alignment) ===== */
+#toolbar {
+  position: fixed;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  padding: 10px 14px;
+  gap: 10px;
+  z-index: 999;
+  font-family: system-ui, sans-serif;
+}
+
+#toolbar button {
+  background: #f1f1f1;
+  border: 1px solid #ddd;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#toolbar button:hover {
+  background: #e6e6e6;
+}
+
+#toolbar button.active {
+  background: #007bff;
+  color: #fff;
+  border-color: #0069d9;
+}
+
+#toolbar input[type="color"] {
+  width: 40px;
+  height: 36px;
+  border: none;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.3);
+}
+
+#toolbar input[type="range"] {
+  width: 120px;
+  height: 6px;
+  cursor: pointer;
+  accent-color: #a86d3d;
+  background: transparent;
+  margin-left: 8px;
+}
+
+#toolbar input[type="range"]::-webkit-slider-thumb {
+  background: #a86d3d;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+}
+
+#toolbar input[type="range"]::-moz-range-thumb {
+  background: #a86d3d;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+}
+
+/* Canvas Container */
+#canvasContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: calc(100vh - 120px);
+  margin-top: 120px;
+}
+
+/* Canvas */
+canvas {
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  max-width: 95vw;
+  max-height: 85vh;
+  display: block;
+}
+
+/* ===== Back Button Styling ===== */
+#backBtn {
+  position: fixed;
+  top: 14px;
+  left: 18px;
+  background: #0078ff;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 1100;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+  transition: all 0.2s ease;
+}
+
+#backBtn:hover {
+  background: #005fcc;
+  transform: translateY(-1px);
 }

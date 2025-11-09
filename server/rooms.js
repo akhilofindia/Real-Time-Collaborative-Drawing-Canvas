@@ -37,17 +37,22 @@ function deleteRoomIfEmpty(roomId) {
 function handleMessage(ws, d) {
   switch (d.type) {
     case "register": {
-      const { roomId = "default", create = false } = d;
+          // inside your message handler when d.type === "register"
+      const roomId = (d.roomId || "default").toString();
+      const createFlag = d.create === true || d.create === "true" || d.create === "1" || d.create === 1;
 
-      if (create) {
+      console.log("🟢 Register request:", roomId, "createFlag:", createFlag);
+
+      if (createFlag) {
         if (!rooms.has(roomId)) {
           rooms.set(roomId, { users: new Map(), history: [], undone: [] });
           console.log(`🆕 Created new room: ${roomId}`);
         } else {
-          console.log(`⚠️ Create requested but room already exists: ${roomId} — joining instead.`);
+          console.log(`⚠️ Room already exists: ${roomId} — joining.`);
         }
       } else {
         if (!rooms.has(roomId)) {
+          console.log(`❌ Tried joining non-existent room: ${roomId}`);
           ws.send(JSON.stringify({ type: "no-room", roomId }));
           return;
         }
@@ -64,11 +69,17 @@ function handleMessage(ws, d) {
       room.users.set(ws.userId, ws);
       console.log(`👤 ${ws.name} joined room ${roomId}`);
 
-      // send current canvas history
-      ws.send(JSON.stringify({ type: "init", history: buildHistory(room) }));
+      ws.send(JSON.stringify({
+        type: "room-created-or-joined",
+        roomId,
+        history: buildHistory(room)
+      }));
+
       broadcastUsers(roomId);
       break;
     }
+
+
 
     case "draw-segment":
     case "shape-preview":
