@@ -14,21 +14,34 @@ let users = {};
 let drawHistory = []; // entries: { type: 'stroke' | 'clear', data or prevState }
 let undoneHistory = [];
 
+// --- Helper functions ---
 function broadcastAll(obj) {
   const str = JSON.stringify(obj);
-  for (const c of wss.clients) if (c.readyState === WebSocket.OPEN) c.send(str);
+  for (const c of wss.clients) {
+    if (c.readyState === WebSocket.OPEN) c.send(str);
+  }
 }
+
 function broadcastExcept(sender, obj) {
   const str = JSON.stringify(obj);
-  for (const c of wss.clients) if (c !== sender && c.readyState === WebSocket.OPEN) c.send(str);
+  for (const c of wss.clients) {
+    if (c !== sender && c.readyState === WebSocket.OPEN) c.send(str);
+  }
 }
+
 function sendQueueStatus() {
   broadcastAll({ type: "queue-status", undo: drawHistory.length, redo: undoneHistory.length });
 }
+
 function broadcastUsers() {
-  const online = Object.entries(users).map(([id, u]) => ({ userId: id, color: u.color, name: u.name }));
+  const online = Object.entries(users).map(([id, u]) => ({
+    userId: id,
+    color: u.color,
+    name: u.name,
+  }));
   broadcastAll({ type: "online-users", users: online });
 }
+
 function buildCurrentStrokes() {
   const strokes = [];
   for (const op of drawHistory) {
@@ -38,56 +51,58 @@ function buildCurrentStrokes() {
   return strokes;
 }
 
+// --- WebSocket connection handling ---
 wss.on("connection", (ws) => {
-  console.log("🟢 client connected");
-  // send current strokes
+  console.log("🟢 Client connected");
+
+  // Send current canvas state
   ws.send(JSON.stringify({ type: "init", history: buildCurrentStrokes() }));
   sendQueueStatus();
   broadcastUsers();
 
   ws.on("message", (msg) => {
-    let d;
-    try { d = JSON.parse(msg.toString()); } catch { return; }
+    let data;
+    try {
+      data = JSON.parse(msg.toString());
+    } catch {
+      console.error("❌ Invalid JSON message");
+      return;
+    }
 
-    switch (d.type) {
+    switch (data.type) {
+      // --- Register a new user ---
       case "register":
-        users[d.userId] = { color: d.color, name: d.name || "Anonymous" };
-        ws.userId = d.userId;
+        users[data.userId] = { color: data.color, name: data.name || "Anonymous" };
+        ws.userId = data.userId;
         broadcastUsers();
         break;
 
-      // ephemeral
+      // --- Ephemeral events (not stored) ---
       case "draw-segment":
       case "shape-preview":
       case "cursor":
-        broadcastExcept(ws, d);
+        broadcastExcept(ws, data);
         break;
 
-      // committed stroke (free / shape / text)
+      // --- Committed strokes (free, shape, or text) ---
       case "stroke":
-        drawHistory.push({ type: "stroke", data: d });
-        undoneHistory = [];
-        broadcastExcept(ws, { type: "stroke", stroke: d });
-        sendQueueStatus();
-        break;
-
-      // backwards compat: if client sent shape or text messages directly
       case "shape":
       case "text":
-        drawHistory.push({ type: "stroke", data: d });
+        drawHistory.push({ type: "stroke", data });
         undoneHistory = [];
-        broadcastExcept(ws, { type: "stroke", stroke: d });
+        broadcastExcept(ws, { type: "stroke", stroke: data });
         sendQueueStatus();
         break;
 
-      case "clear": {
+      // --- Clear Canvas (undoable) ---
+      case "clear":
         drawHistory.push({ type: "clear", prevState: buildCurrentStrokes() });
         undoneHistory = [];
         broadcastAll({ type: "clear" });
         sendQueueStatus();
         break;
-      }
 
+      // --- Undo ---
       case "undo":
         if (drawHistory.length > 0) {
           const last = drawHistory.pop();
@@ -97,32 +112,42 @@ wss.on("connection", (ws) => {
         }
         break;
 
+      // --- Redo ---
       case "redo":
         if (undoneHistory.length > 0) {
-          const r = undoneHistory.pop();
-          drawHistory.push(r);
+          const redone = undoneHistory.pop();
+          drawHistory.push(redone);
           broadcastAll({ type: "update-canvas", history: buildCurrentStrokes() });
           sendQueueStatus();
         }
         break;
 
+      // --- Ping-Pong latency check ---
+      case "ping":
+        ws.send(JSON.stringify({ type: "pong", sentAt: data.sentAt }));
+        break;
+
+      // --- Disconnect notice ---
       case "disconnect":
-        broadcastExcept(ws, d);
+        broadcastExcept(ws, data);
         break;
 
       default:
-        console.warn("Unknown type:", d.type);
+        console.warn("⚠️ Unknown message type:", data.type);
     }
   });
 
+  // --- Handle disconnection ---
   ws.on("close", () => {
     if (ws.userId) {
       delete users[ws.userId];
       broadcastUsers();
     }
-    console.log("🔴 client disconnected");
+    console.log("🔴 Client disconnected");
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, "0.0.0.0", () => console.log(`Server running on ${PORT}`));
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
+});

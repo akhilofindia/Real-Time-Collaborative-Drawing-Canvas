@@ -1,7 +1,5 @@
 // client/canvas.js
-// Single-canvas, stable, with live cursor, shape-preview and unified strokes.
-// Assumes HTML has buttons with ids: brush, eraser, rect, circle, text, clear, undo, redo
-// and inputs: color, width
+// Collaborative whiteboard with brush, eraser, shapes, text, undo/redo, live cursors, usernames, and performance metrics (FPS + Ping).
 
 // --- username per-tab ---
 let username = sessionStorage.getItem("username");
@@ -29,28 +27,28 @@ if (!username) {
     canvas.height = h;
   }
   resizeCanvasToFit();
-  window.addEventListener("resize", () => { resizeCanvasToFit(); redrawAll(); renderCursors(); });
+  window.addEventListener("resize", () => {
+    resizeCanvasToFit();
+    redrawAll();
+    renderCursors();
+  });
 
   // ---- state ----
   const userId = "user-" + Math.random().toString(36).slice(2, 8);
   const userColor = "#" + Math.floor(Math.random() * 16777215).toString(16);
 
-  let currentTool = "brush"; // 'brush'|'eraser'|'rect'|'circle'|'text'
+  let currentTool = "brush";
   let color = "#000000";
   let strokeWidth = 3;
   let drawing = false;
   let startPoint = null;
   let pointsBuffer = [];
-  let localHistory = []; // array of unified stroke objects
-  // unified stroke object examples:
-  // freehand: { type:'stroke', kind:'free', userId, color, width, eraser, points: [...] }
-  // shape:    { type:'stroke', kind:'shape', userId, shapeType:'rect'|'circle', from:{x,y}, to:{x,y}, color, width }
-  // text:     { type:'stroke', kind:'text', userId, text, x, y, color, size }
+  let localHistory = [];
 
-  // ---- UI elements (create brush button if missing) ----
+  // ---- UI elements ----
   const colorInput = document.getElementById("color");
   const widthInput = document.getElementById("width");
-  let brushBtn = document.getElementById("brush");
+  const brushBtn = document.getElementById("brush");
   const eraserBtn = document.getElementById("eraser");
   const rectBtn = document.getElementById("rect");
   const circleBtn = document.getElementById("circle");
@@ -65,7 +63,7 @@ if (!username) {
     currentTool = tool;
     toolButtons.forEach(b => b && b.classList.toggle("active", b.id === tool));
   }
-  setTool("brush"); // default
+  setTool("brush");
 
   if (colorInput) colorInput.addEventListener("input", e => { color = e.target.value; if (currentTool === "eraser") setTool("brush"); });
   if (widthInput) widthInput.addEventListener("input", e => { strokeWidth = +e.target.value; });
@@ -84,7 +82,7 @@ if (!username) {
     if (redoBtn) redoBtn.disabled = redoCount === 0;
   }
 
-  // ---- cursors + user panel ----
+  // ---- overlay + user panels ----
   const cursors = {};
   const overlay = document.createElement("div");
   Object.assign(overlay.style, { position: "fixed", top: "0", left: "0", width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 999 });
@@ -94,6 +92,24 @@ if (!username) {
   Object.assign(userPanel.style, { position: "fixed", right: "20px", top: "20px", background: "rgba(255,255,255,0.95)", padding: "8px 10px", borderRadius: "8px", zIndex: 1000, fontFamily: "sans-serif" });
   document.body.appendChild(userPanel);
 
+  // --- PERFORMANCE PANEL ---
+  const perfPanel = document.createElement("div");
+  Object.assign(perfPanel.style, {
+    position: "fixed",
+    left: "20px",
+    top: "20px",
+    background: "rgba(0,0,0,0.7)",
+    color: "lime",
+    fontFamily: "monospace",
+    fontSize: "13px",
+    padding: "6px 8px",
+    borderRadius: "8px",
+    zIndex: 1000,
+    minWidth: "90px",
+  });
+  perfPanel.innerHTML = "FPS: --<br>Ping: -- ms";
+  document.body.appendChild(perfPanel);
+
   function renderUserPanel(users) {
     userPanel.innerHTML = `<strong>👥 Online (${users.length})</strong><br/>`;
     users.forEach(u => {
@@ -101,7 +117,7 @@ if (!username) {
       row.style.display = "flex";
       row.style.alignItems = "center";
       row.style.marginTop = "6px";
-      row.innerHTML = `<span style="width:12px;height:12px;border-radius:50%;display:inline-block;background:${u.color};margin-right:8px"></span>${u.userId===userId?`<strong>${u.name} (You)</strong>`:u.name}`;
+      row.innerHTML = `<span style="width:12px;height:12px;border-radius:50%;display:inline-block;background:${u.color};margin-right:8px"></span>${u.userId === userId ? `<strong>${u.name} (You)</strong>` : u.name}`;
       userPanel.appendChild(row);
     });
   }
@@ -179,11 +195,8 @@ if (!username) {
         const a = st.points[i - 1], b = st.points[i];
         drawLineOnCtx(ctx, a.x * canvas.width, a.y * canvas.height, b.x * canvas.width, b.y * canvas.height, st.color, st.width, st.eraser);
       }
-    } else if (st.kind === "shape") {
-      drawShapeOnCtx(ctx, st);
-    } else if (st.kind === "text") {
-      drawTextOnCtx(ctx, st);
-    }
+    } else if (st.kind === "shape") drawShapeOnCtx(ctx, st);
+    else if (st.kind === "text") drawTextOnCtx(ctx, st);
   }
 
   function redrawAll(history = localHistory) {
@@ -212,23 +225,20 @@ if (!username) {
 
   function pointerMove(e) {
     const pos = getNormPos(e);
-    // send cursor every move
-    try { ws.send(JSON.stringify({ type: "cursor", userId, x: pos.x, y: pos.y, color: userColor, name: username })); } catch {}
+    safeSend({ type: "cursor", userId, x: pos.x, y: pos.y, color: userColor, name: username });
 
     if (!drawing) return;
 
     if (currentTool === "brush" || currentTool === "eraser") {
       const last = pointsBuffer[pointsBuffer.length - 1];
       drawLineOnCtx(ctx, last.x * canvas.width, last.y * canvas.height, pos.x * canvas.width, pos.y * canvas.height, color, strokeWidth, currentTool === "eraser");
-      // broadcast segment for live remote rendering
-      try { ws.send(JSON.stringify({ type: "draw-segment", from: last, to: pos, color, width: strokeWidth, eraser: currentTool === "eraser" })); } catch {}
+      safeSend({ type: "draw-segment", from: last, to: pos, color, width: strokeWidth, eraser: currentTool === "eraser" });
       pointsBuffer.push(pos);
     } else if (currentTool === "rect" || currentTool === "circle") {
-      // redraw base then draw preview on top, then broadcast shape-preview to others
       redrawAll();
       const preview = { kind: "shape", shapeType: currentTool, from: startPoint, to: pos, color, width: strokeWidth };
       drawShapeOnCtx(ctx, preview);
-      try { ws.send(JSON.stringify({ type: "shape-preview", shape: preview })); } catch {}
+      safeSend({ type: "shape-preview", shape: preview });
     }
   }
 
@@ -241,64 +251,53 @@ if (!username) {
       if (pointsBuffer.length < 2) return;
       const freeStroke = { type: "stroke", kind: "free", userId, color, width: strokeWidth, eraser: currentTool === "eraser", points: pointsBuffer.slice() };
       localHistory.push(freeStroke);
-      try { ws.send(JSON.stringify(freeStroke)); } catch {}
+      safeSend(freeStroke);
     } else if (currentTool === "rect" || currentTool === "circle") {
       const shapeStroke = { type: "stroke", kind: "shape", userId, shapeType: currentTool, from: startPoint, to: pos, color, width: strokeWidth };
       localHistory.push(shapeStroke);
       redrawAll();
-      try { ws.send(JSON.stringify(shapeStroke)); } catch {}
+      safeSend(shapeStroke);
     } else if (currentTool === "text") {
       const txt = prompt("Enter text:");
       if (txt) {
         const textObj = { type: "stroke", kind: "text", userId, text: txt, x: pos.x, y: pos.y, color, size: strokeWidth * 5 };
         localHistory.push(textObj);
         renderStrokeObject(textObj);
-        try { ws.send(JSON.stringify(textObj)); } catch {}
+        safeSend(textObj);
       }
     }
   }
 
-  // attach events
-  // ---- MOUSE EVENTS ----
+  // ---- EVENTS ----
   canvas.addEventListener("mousedown", pointerDown);
   document.addEventListener("mousemove", pointerMove);
   document.addEventListener("mouseup", pointerUp);
-  canvas.addEventListener("mouseleave", (e) => {
-    // finalize shape if user drags outside
-    if (drawing) pointerUp(e);
-  });
+  canvas.addEventListener("mouseleave", e => { if (drawing) pointerUp(e); });
 
-  // ---- TOUCH EVENTS ----
-  canvas.addEventListener("touchstart", (e) => { pointerDown(e); }, { passive: false });
-  document.addEventListener("touchmove", (e) => { pointerMove(e); }, { passive: false });
-  document.addEventListener("touchend", (e) => { pointerUp(e); }, { passive: false });
-  document.addEventListener("touchcancel", (e) => { pointerUp(e); }, { passive: false });
-
+  canvas.addEventListener("touchstart", e => pointerDown(e), { passive: false });
+  document.addEventListener("touchmove", e => pointerMove(e), { passive: false });
+  document.addEventListener("touchend", e => pointerUp(e), { passive: false });
+  document.addEventListener("touchcancel", e => pointerUp(e), { passive: false });
 
   // ---- WebSocket ----
   const ws = new WebSocket(`ws://${window.location.host}`);
-  ws.onopen = () => {
-    try { ws.send(JSON.stringify({ type: "register", userId, color: userColor, name: username })); } catch {}
-  };
+  const safeSend = obj => { try { ws.send(JSON.stringify(obj)); } catch {} };
 
-  ws.onmessage = (ev) => {
+  ws.onopen = () => safeSend({ type: "register", userId, color: userColor, name: username });
+
+  ws.onmessage = ev => {
     let data;
     try { data = JSON.parse(ev.data); } catch { return; }
     switch (data.type) {
       case "draw-segment":
         drawLineOnCtx(ctx, data.from.x * canvas.width, data.from.y * canvas.height, data.to.x * canvas.width, data.to.y * canvas.height, data.color, data.width, data.eraser);
         break;
-
       case "shape-preview":
-        // show preview from other user, but do NOT store
         redrawAll();
         if (data.shape) drawShapeOnCtx(ctx, data.shape);
         break;
-
       case "stroke":
-        // server sends { type:'stroke', stroke: <obj> } OR stroke object directly
         const incoming = data.stroke || data;
-        // normalize: if kind missing, infer
         if (!incoming.kind) {
           if (incoming.points) incoming.kind = "free";
           else if (incoming.shapeType) incoming.kind = "shape";
@@ -307,7 +306,6 @@ if (!username) {
         localHistory.push(incoming);
         renderStrokeObject(incoming);
         break;
-
       case "init":
       case "update-canvas":
         localHistory = (data.history || []).map(s => {
@@ -320,18 +318,14 @@ if (!username) {
         });
         redrawAll();
         break;
-
       case "clear":
         localHistory = [];
         redrawAll();
         break;
-
       case "queue-status":
         setButtonsState(data.undo, data.redo);
         break;
-
       case "cursor":
-        // convert normalized coords to page coords for overlay positioning
         const rect = canvas.getBoundingClientRect();
         cursors[data.userId] = {
           x: rect.left + data.x * rect.width,
@@ -341,18 +335,56 @@ if (!username) {
         };
         renderCursors();
         break;
-
       case "online-users":
         renderUserPanel(data.users || []);
         break;
-
+      case "pong":
+        latency = performance.now() - (data.sentAt || 0);
+        updatePerfPanel();
+        break;
       case "disconnect":
         delete cursors[data.userId];
         renderCursors();
         break;
+        
     }
   };
 
-  // notify server on close
-  window.addEventListener("beforeunload", () => { try { ws.send(JSON.stringify({ type: "disconnect", userId })); } catch {} });
+  // ---- PERFORMANCE (FPS + PING) ----
+  let lastFrameTime = performance.now();
+  let frameCount = 0;
+  let fps = 0;
+  let latency = 0;
+  let lastPing = 0;
+
+  function updateFPS() {
+    const now = performance.now();
+    frameCount++;
+    if (now - lastFrameTime >= 1000) {
+      fps = frameCount;
+      frameCount = 0;
+      lastFrameTime = now;
+      updatePerfPanel();
+    }
+    requestAnimationFrame(updateFPS);
+  }
+
+  function sendPing() {
+    lastPing = performance.now();
+    safeSend({ type: "ping", sentAt: lastPing });
+  }
+
+  function updatePerfPanel() {
+    let color = "lime";
+    if (latency > 200) color = "yellow";
+    if (latency > 400) color = "red";
+    perfPanel.style.color = color;
+    perfPanel.innerHTML = `FPS: ${fps}<br>Ping: ${latency.toFixed(1)} ms`;
+  }
+
+  setInterval(sendPing, 3000);
+  requestAnimationFrame(updateFPS);
+
+  // ---- CLEANUP ----
+  window.addEventListener("beforeunload", () => safeSend({ type: "disconnect", userId }));
 })();
