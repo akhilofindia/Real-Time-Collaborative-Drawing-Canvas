@@ -76,9 +76,8 @@ See full details → [`ARCHITECTURE.md`](ARCHITECTURE.md)
 ## 🕒 Time Spent
 
 **~2.5 days total**
-- Day 1 → Core drawing logic
-- Day 2 → Undo/Redo + cursors
-- Day 3 → Modular structure + deployment
+- Day 1 → Planning & Designing
+- Day 2 & 3 → Code Implementation + deployment
 
 ## 👨‍💻 Author
 
