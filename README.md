@@ -5,7 +5,8 @@ A multi-user collaborative drawing app where multiple people can draw simultaneo
 ## 🚀 Live Demo
 
 **Deployed on Render:**  
-👉 [https://collaborative-canvas.onrender.com](https://collaborative-canvas.onrender.com)
+
+👉 [https://real-time-collaborative-drawing-canvas-8r4t.onrender.com](https://real-time-collaborative-drawing-canvas-8r4t.onrender.com)
 
 Create a new room:  
 `https://collaborative-canvas.onrender.com/board.html?room=HELLO1&create=1`
