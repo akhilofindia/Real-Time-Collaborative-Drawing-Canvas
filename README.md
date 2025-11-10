@@ -9,10 +9,10 @@ A multi-user collaborative drawing app where multiple people can draw simultaneo
 👉 [https://real-time-collaborative-drawing-canvas-8r4t.onrender.com](https://real-time-collaborative-drawing-canvas-8r4t.onrender.com)
 
 Create a new room:  
-`https://collaborative-canvas.onrender.com/board.html?room=HELLO1&create=1`
+`https://real-time-collaborative-drawing-canvas-8r4t.onrender.com/board.html?room=N4L9GD&create=1`
 
 Join the same room (from another tab or user):  
-`https://collaborative-canvas.onrender.com/board.html?room=HELLO1`
+`https://real-time-collaborative-drawing-canvas-8r4t.onrender.com/board.html?room=N4L9GD`
 
 ## ⚙️ Setup Instructions
 
